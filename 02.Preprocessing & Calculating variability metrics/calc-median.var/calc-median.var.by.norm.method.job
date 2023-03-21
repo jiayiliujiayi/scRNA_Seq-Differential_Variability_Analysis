@@ -1,0 +1,89 @@
+#!/bin/bash
+
+##SBATCH --partition=mem
+##SBATCH --partition=XXX
+#SBATCH --job-name=MedianVar           # Assign an short unique name to your job
+#SBATCH --requeue
+#SBATCH --nodes=1                   # Number of nodes you require
+#SBATCH --ntasks=1                  # Total # of tasks across all nodes
+#SBATCH --cpus-per-task=6           # Cores per task (>1 if multithread tasks)
+#SBATCH --mem=350G               # Real memory (RAM) required (MB)
+#SBATCH --time=2-01:00:00             # Total run time limit (HH:MM:SS) // Days: 1-3:0:0
+#SBATCH --error=./slurm_out/%A_%a.err
+#SBATCH --output=./slurm_out/%A_%a.out
+#SBATCH --mail-user=XXXX@gmail.com 
+#SBATCH --mail-type=END,FAIL
+
+# load modulde
+module purge
+module load singularity/3.8.3
+
+# Create temporary directory to be populated with directories to bind-mount in the container
+# where writable file systems are necessary. Adjust path as appropriate for your computing environment.
+workdir=$(python -c 'import tempfile; print(tempfile.mkdtemp())')
+
+mkdir -p -m 700 ${workdir}/run ${workdir}/tmp ${workdir}/var/lib/rstudio-server
+cat > ${workdir}/database.conf <<END
+provider=sqlite
+directory=/var/lib/rstudio-server
+END
+
+# Set OMP_NUM_THREADS to prevent OpenBLAS (and any other OpenMP-enhanced
+# libraries used by R) from spawning more threads than the number of processors
+# allocated to the job.
+#
+# Set R_LIBS_USER to a path specific to rocker/rstudio to avoid conflicts with
+# personal libraries from any R installation in the host environment
+cat > ${workdir}/rsession.sh <<END
+#!/bin/sh
+export OMP_NUM_THREADS=${SLURM_JOB_CPUS_PER_NODE}
+export R_LIBS=/home/XXXX/R/rocker-rstudio/4.0
+exec rsession "\${@}"
+END
+
+chmod +x ${workdir}/rsession.sh
+
+export SINGULARITY_BIND="${workdir}/run:/run,${workdir}/tmp:/tmp,${workdir}/database.conf:/etc/rstudio/database.conf,${workdir}/rsession.sh:/etc/rstudio/rsession.sh,${workdir}/var/lib/rstudio-server:/var/lib/rstudio-server,/scratch/XXXX"
+
+# Do not suspend idle sessions.
+# Alternative to setting session-timeout-minutes=0 in /etc/rstudio/rsession.conf
+# https://github.com/rstudio/rstudio/blob/v1.4.1106/src/cpp/server/ServerSessionManager.cpp#L116
+export SINGULARITYENV_RSTUDIO_SESSION_TIMEOUT=0
+
+
+# run script
+singularity exec /home/XXXX/container/rserver_4.1.1bioinfo.sif Rscript calc-median.var.by.norm.method.R \
+--minfolder=1 \
+--maxfolder=1000 \
+--input_datetag=20220309 \
+--gene_perc=50 \
+--factor_lower=1.5 \
+--factor_upper=3.0 \
+--ncells_per_type=100
+
+singularity exec /home/XXXX/container/rserver_4.1.1bioinfo.sif Rscript calc-median.var.by.norm.method.R \
+--minfolder=1 \
+--maxfolder=1000 \
+--input_datetag=20220309 \
+--gene_perc=50 \
+--factor_lower=1.5 \
+--factor_upper=3.0 \
+--ncells_per_type=200
+
+singularity exec /home/XXXX/container/rserver_4.1.1bioinfo.sif Rscript calc-median.var.by.norm.method.R \
+--minfolder=1 \
+--maxfolder=1000 \
+--input_datetag=20220309 \
+--gene_perc=50 \
+--factor_lower=1.5 \
+--factor_upper=3.0 \
+--ncells_per_type=500
+
+singularity exec /home/XXXX/container/rserver_4.1.1bioinfo.sif Rscript calc-median.var.by.norm.method.R \
+--minfolder=1 \
+--maxfolder=1000 \
+--input_datetag=20220309 \
+--gene_perc=50 \
+--factor_lower=1.5 \
+--factor_upper=3.0 \
+--ncells_per_type=1000
